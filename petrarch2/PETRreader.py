@@ -2207,8 +2207,9 @@ def read_xml_input(filepaths, parsed=False):
 def read_csv_input(filepaths, parsed=False):
     nlp = StanfordCoreNLP(os.path.join('models','stanford-corenlp-full-2018-10-05'))
     
+    print(filepaths[0])
     # convert csv to xml here
-    df = pd.read_csv(filepaths)
+    df = pd.read_csv(filepaths[0])
     
     # for right now, just use first 100
     df = df.iloc[:100]

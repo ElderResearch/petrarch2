@@ -528,7 +528,6 @@ def main():
         run(paths, out, cli_args.parsed)
 
     else:
-        paths = os.path.join('data','input','20190321.export.with_header.CSV')
         run(paths, out, True)  # <===
 
     print("Coding time:", time.time() - start_time)
@@ -568,7 +567,7 @@ def read_dictionaries(validation=False):
 def run(filepaths, out_file, s_parsed):
     # this is the routine called from main()
     #events = PETRreader.read_xml_input(filepaths, s_parsed)
-    events, df_orig = PETRreader.read_csv_input(filepaths, s_parsed)
+    events, df_orig = PETRreader.read_csv_input(filepaths[0])
     if not s_parsed:
         events = utilities.stanford_parse(events)
     updated_events = do_coding(events)
@@ -583,7 +582,7 @@ def run(filepaths, out_file, s_parsed):
         df = df.drop(columns=['SQLDATE_P'])
         df = df.rename(index=str, columns={'SQLDATE_G':'SQLDATE'})
         col_to_keep = ['GLOBALEVENTID', 'SQLDATE', 'Actor1Code_G', 'Actor1Name_G', 'Actor2Code_G', 'Actor2Name_G', 'EventCode_G', 'Actor1Code_P', 'Actor1Name_P', 'Actor2Code_P', 'Actor2Name_P', 'EventCode_P', 'SOURCEURL']
-        df[col_to_keep].to_csv('outputfile.csv', index=False)
+        df[col_to_keep].to_csv(out_file, index=False)
 
 
 def run_pipeline(data, out_file=None, config=None, write_output=True,
