@@ -1,3 +1,22 @@
+Elder Research Notes
+==========
+
+## Stanford CoreNLP setup
+1. Download zip file from http://nlp.stanford.edu/software/stanford-corenlp-full-2018-10-05.zip.
+2. Unzip the file and put the top-level directory in ``petrarch2/petrarch2/models/``.
+
+## GDELT CSV files
+1. Download a CSV file(s) from http://data.gdeltproject.org/events/.
+2. Unzip the file and put it in ``petrarch2/petrarch2/data/input/``.
+3. Insert the header from ``petrarch2/petrarch2/data/input/header.csv`` as the first line of the
+GDELT CSV file.
+
+## Running Petrarch-2
+1. From the command line, navigate to ``petrarch2/petrarch2``.
+2. Ensure that the `python` command is for version 2.7.
+3. Run ``python petrarch2.py batch -i data/input/<csv_input_file> -o <csv_output_file>`` with
+``<csv_input_file>`` and ``<csv_output_file>`` replaced with the input and output csv files respectively.
+
 PETRARCH-2
 ==========
 
