@@ -47,6 +47,11 @@ import math  # required for ordinal date calculations
 import logging
 import xml.etree.ElementTree as ET
 from functools import reduce
+from stanfordcorenlp import StanfordCoreNLP
+import pandas as pd
+from newspaper import Article
+from tqdm import tqdm
+from cStringIO import StringIO
 
 try:
     from ConfigParser import ConfigParser
@@ -2128,6 +2133,9 @@ def read_xml_input(filepaths, parsed=False):
                 Please refer to the documentation for greater information on
                 the format of this dictionary.
     """
+
+    nlp = StanfordCoreNLP(os.path.join('models','stanford-corenlp-full-2018-10-05'))
+
     holding = {}
 
     for path in filepaths:
@@ -2144,21 +2152,24 @@ def read_xml_input(filepaths, parsed=False):
                     print('Need to properly format your XML...')
                     break
 
-                # If the XML contains StanfordNLP parsed data, pull that out
-                # TODO: what to do about parsed content at the story level,
-                # i.e., multiple parsed sentences within the XML entry?
-                if parsed:
-                    parsed_content = story.find('Parse').text
+                parse_tag = story.find('Parse')
+
+                if parse_tag is not None:
+                    parsed_content = parse_tag.text
                     parsed_content = utilities._format_parsed_str(
                         parsed_content)
                 else:
-                    parsed_content = ''
+                    parsed_content = None
 
                 # Get the sentence information
                 if story.attrib['sentence'] == 'True':
                     entry_id, sent_id = story.attrib['id'].split('_')
 
                     text = story.find('Text').text
+
+                    if parsed_content is None:
+                        parsed_content = utilities._format_parsed_str(nlp.parse(text))
+
                     text = text.replace('\n', ' ').replace('  ', ' ')
                     sent_dict = {'content': text, 'parsed': parsed_content}
                     meta_content = {'date': story.attrib['date'],
@@ -2174,9 +2185,11 @@ def read_xml_input(filepaths, parsed=False):
                     # TODO Make the number of sents a setting
                     sent_dict = {}
                     for i, sent in enumerate(split_sents[:7]):
-                        sent_dict[i] = {'content': sent, 'parsed':
-                                        parsed_content}
+                        if parsed_content is None:
+                            parsed_content = utilities._format_parsed_str(nlp.parse(sent))
 
+                        sent_dict[str(i).decode("utf-8")] = {'content': sent, 'parsed':
+                                        parsed_content}
                     meta_content = {'date': story.attrib['date']}
                     content_dict = {'sents': sent_dict, 'meta': meta_content}
 
@@ -2187,8 +2200,120 @@ def read_xml_input(filepaths, parsed=False):
 
                 elem.clear()
 
+    nlp.close()
+
     return holding
 
+def read_csv_input(filepaths, parsed=False):
+    nlp = StanfordCoreNLP(os.path.join('models','stanford-corenlp-full-2018-10-05'))
+    
+    # convert csv to xml here
+    df = pd.read_csv(filepaths)
+    
+    # for right now, just use first 100
+    df = df.iloc[:100]
+    
+    # regex for parsing sentences
+    end_sent = re.compile(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s")
+    
+    # use ET to write an xml into tree variable below
+    sentences = ET.Element('Sentences')
+    
+    for idx, row in enumerate(tqdm(df.itertuples(), total=df.shape[0])):
+        try:
+            article = Article(row.SOURCEURL)
+            article.download()
+            article.parse()
+            article_text = article.text
+            article_title = article.title
+            src = 'SUCCESS'
+        except:
+            article_text = ' '
+            article_title = ' '
+            src = 'ERROR'
+        
+        sentence = ET.SubElement(sentences, 'Sentence', attrib={'date':str(row.SQLDATE), 'id':str(row.GLOBALEVENTID) + '_' + str(idx), 'source':src, 'sentence':"True"})
+        
+        first_sent = end_sent.split(article_text)[0]
+        
+        if len(article_title) > len(first_sent):
+            first_sent = article_title    
+        
+        text_tag = ET.SubElement(sentence, 'Text')
+        text_tag.text = first_sent
+        
+    tree = ET.iterparse(StringIO(ET.tostring(sentences)))
+    
+    holding = {}
+
+    for event, elem in tree:
+        if event == "end" and elem.tag == "Sentence":
+            story = elem
+
+            # Check to make sure all the proper XML attributes are included
+            attribute_check = [key in story.attrib for key in
+                               ['date', 'id', 'sentence', 'source']]
+            if not attribute_check:
+                print('Need to properly format your XML...')
+                break
+
+            parse_tag = story.find('Parse')
+
+            if parse_tag is not None:
+                parsed_content = parse_tag.text
+                parsed_content = utilities._format_parsed_str(
+                    parsed_content)
+            else:
+                parsed_content = None
+
+            # Get the sentence information
+            if story.attrib['sentence'] == 'True':
+                entry_id, sent_id = story.attrib['id'].split('_')
+
+                text = story.find('Text').text
+                
+                if parsed_content is None:
+                    if text is None:
+                        text = 'ERROR' 
+                    
+                    parsed_content = utilities._format_parsed_str(nlp.parse(text.encode('utf-8')))
+
+                text = text.replace('\n', ' ').replace('  ', ' ')
+                sent_dict = {'content': text, 'parsed': parsed_content}
+                meta_content = {'date': story.attrib['date'],
+                                'source': story.attrib['source']}
+                content_dict = {'sents': {sent_id: sent_dict},
+                                'meta': meta_content}
+            else:
+                entry_id = story.attrib['id']
+
+                text = story.find('Text').text
+                text = text.replace('\n', ' ').replace('  ', ' ')
+                split_sents = _sentence_segmenter(text)
+                # TODO Make the number of sents a setting
+                sent_dict = {}
+                for i, sent in enumerate(split_sents[:7]):
+                    if parsed_content is None:
+                        if sent is None:
+                            sent = 'ERROR' 
+                        
+                        parsed_content = utilities._format_parsed_str(nlp.parse(sent.encode('utf-8')))
+
+                    sent_dict[str(i).decode("utf-8")] = {'content': sent, 'parsed':
+                                    parsed_content}
+                meta_content = {'date': story.attrib['date']}
+                content_dict = {'sents': sent_dict, 'meta': meta_content}
+
+            if entry_id not in holding:
+                holding[entry_id] = content_dict
+            else:
+                holding[entry_id]['sents'][sent_id] = sent_dict
+
+            elem.clear()
+
+    nlp.close()
+
+    return holding, df
 
 def read_pipeline_input(pipeline_list):
     """

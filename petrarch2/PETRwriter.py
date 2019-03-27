@@ -30,6 +30,7 @@ import PETRglobals  # global variables
 import utilities
 import codecs
 import json
+import pandas as pd
 
 
 def get_actor_text(meta_strg):
@@ -146,6 +147,109 @@ def write_events(event_dict, output_file):
             f.write(str + '\n')
         f.close()
 
+def get_events_as_df(event_dict):
+    """
+    Formats and writes the coded event data to a file in a standard
+    event-data format.
+
+    Parameters
+    ----------
+
+    event_dict: Dictionary.
+                The main event-holding dictionary within PETRARCH.
+
+    """
+    global StorySource
+    global NEvents
+    global StoryIssues
+
+    event_output = []
+    for key in event_dict:
+        story_dict = event_dict[key]
+        if not story_dict['sents']:
+            continue    # skip cases eliminated by story-level discard
+#        print('WE1',story_dict)
+        story_output = []
+        filtered_events = utilities.story_filter(story_dict, key)
+#        print('WE2',filtered_events)
+        if 'source' in story_dict['meta']:
+            StorySource = story_dict['meta']['source']
+        else:
+            StorySource = 'NULL'
+        if 'url' in story_dict['meta']:
+            url = story_dict['meta']['url']
+        else:
+            url = ''
+        for event in filtered_events:
+            story_date = event[0]
+            source = event[1]
+            target = event[2]
+            code = filter(lambda a: not a == '\n', event[3])
+
+            ids = ';'.join(filtered_events[event]['ids'])
+
+            if 'issues' in filtered_events[event]:
+                iss = filtered_events[event]['issues']
+                issues = ['{},{}'.format(k, v) for k, v in iss.items()]
+                joined_issues = ';'.join(issues)
+            else:
+                joined_issues = []
+
+            print('Event: {}\t{}\t{}\t{}\t{}\t{}'.format(story_date, source,
+                                                         target, code, ids,
+                                                         StorySource))
+#            event_str = '{}\t{}\t{}\t{}'.format(story_date,source,target,code)
+            # 15.04.30: a very crude hack around an error involving multi-word
+            # verbs
+            if not isinstance(event[3], basestring):
+                event_str = '\t'.join(
+                    event[:3]) + '\t010\t' + '\t'.join(event[4:])
+            else:
+                event_str = '\t'.join(event)
+            # print(event_str)
+            if joined_issues:
+                event_str += '\t{}'.format(joined_issues)
+            else:
+                event_str += '\t'
+
+            if url:
+                event_str += '\t{}\t{}\t{}'.format(ids, url, StorySource)
+            else:
+                event_str += '\t{}\t{}'.format(ids, StorySource)
+
+            if PETRglobals.WriteActorText:
+                if 'actortext' in filtered_events[event]:
+                    event_str += '\t{}\t{}'.format(
+                        filtered_events[event]['actortext'][0],
+                        filtered_events[event]['actortext'][1])
+                else:
+                    event_str += '\t---\t---'
+            if PETRglobals.WriteEventText:
+                if 'eventtext' in filtered_events[event]:
+                    event_str += '\t{}'.format(
+                        filtered_events[event]['eventtext'])
+                else:
+                    event_str += '\t---'
+            if PETRglobals.WriteActorRoot:
+                if 'actorroot' in filtered_events[event]:
+                    event_str += '\t{}\t{}'.format(
+                        filtered_events[event]['actorroot'][0],
+                        filtered_events[event]['actorroot'][1])
+                else:
+                    event_str += '\t---\t---'
+
+            story_output.append(event_str)
+            
+        if story_output:
+            story_events = story_output[0].split('\t')
+            event_output.append(story_events)
+            
+    col_names = ['SQLDATE', 'Actor1Code', 'Actor2Code', 'EventCode', 'EventCodeName', 'GLOBALEVENTID', 'Processed', 'Actor1Name', 'Actor2Name', 'Phrase']
+    df = pd.DataFrame(event_output, columns=col_names)
+    df['GLOBALEVENTID'] = df['GLOBALEVENTID'].apply(lambda x: x.split('_')[0])
+    df[['SQLDATE', 'GLOBALEVENTID', 'EventCode']] = df[['SQLDATE', 'GLOBALEVENTID', 'EventCode']].astype(int)
+    
+    return df
 
 def write_nullverbs(event_dict, output_file):
     """

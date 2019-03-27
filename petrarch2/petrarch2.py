@@ -398,6 +398,74 @@ PETRARCH2
     return args
 
 
+#def main():
+#    cli_args = parse_cli_args()
+#    utilities.init_logger('PETRARCH.log')
+#    logger = logging.getLogger('petr_log')
+#
+#    PETRglobals.RunTimeString = time.asctime()
+#
+#    print(cli_args)
+#    if cli_args.config:
+#        print('Using user-specified config: {}'.format(cli_args.config))
+#        logger.info(
+#            'Using user-specified config: {}'.format(cli_args.config))
+#        PETRreader.parse_Config(cli_args.config)
+#    else:
+#        logger.info('Using default config file.')
+#        PETRreader.parse_Config(utilities._get_data('data/config/',
+#                                                    'PETR_config.ini'))
+#
+#    if cli_args.nullverbs:
+#        print('Coding in null verbs mode; no events will be generated')
+#        logger.info(
+#            'Coding in null verbs mode; no events will be generated')
+#        # Only get verb phrases that are not in the dictionary but are
+#        # associated with coded noun phrases
+#        PETRglobals.NullVerbs = True
+#    elif cli_args.nullactors:
+#        print('Coding in null actors mode; no events will be generated')
+#        logger.info(
+#            'Coding in null verbs mode; no events will be generated')
+#        # Only get actor phrases that are not in the dictionary but
+#        # associated with coded verb phrases
+#        PETRglobals.NullActors = True
+#        PETRglobals.NewActorLength = int(cli_args.nullactors)
+#
+#    read_dictionaries()
+#    start_time = time.time()
+#    print('\n\n')
+#
+#    paths = PETRglobals.TextFileList
+#    if cli_args.inputs:
+#        if os.path.isdir(cli_args.inputs):
+#            if cli_args.inputs[-1] != '/':
+#                paths = glob.glob(cli_args.inputs + '/*.xml')
+#            else:
+#                paths = glob.glob(cli_args.inputs + '*.xml')
+#        elif os.path.isfile(cli_args.inputs):
+#            paths = [cli_args.inputs]
+#        else:
+#            print(
+#                '\nFatal runtime error:\n"' +
+#                cli_args.inputs +
+#                '" could not be located\nPlease enter a valid directory or file of source texts.')
+#            sys.exit()
+#
+#    out = ""  # PETRglobals.EventFileName
+#    if cli_args.outputs:
+#        out = cli_args.outputs
+#
+#    if cli_args.command_name == 'parse':
+#        run(paths, out, cli_args.parsed)
+#
+#    else:
+#        run(paths, out, True)  # <===
+#
+#    print("Coding time:", time.time() - start_time)
+#
+#    print("Finished")
+
 def main():
     cli_args = parse_cli_args()
     utilities.init_logger('PETRARCH.log')
@@ -460,12 +528,12 @@ def main():
         run(paths, out, cli_args.parsed)
 
     else:
+        paths = os.path.join('data','input','20190321.export.with_header.CSV')
         run(paths, out, True)  # <===
 
     print("Coding time:", time.time() - start_time)
 
     print("Finished")
-
 
 def read_dictionaries(validation=False):
 
@@ -499,7 +567,8 @@ def read_dictionaries(validation=False):
 
 def run(filepaths, out_file, s_parsed):
     # this is the routine called from main()
-    events = PETRreader.read_xml_input(filepaths, s_parsed)
+    #events = PETRreader.read_xml_input(filepaths, s_parsed)
+    events, df_orig = PETRreader.read_csv_input(filepaths, s_parsed)
     if not s_parsed:
         events = utilities.stanford_parse(events)
     updated_events = do_coding(events)
@@ -508,7 +577,13 @@ def run(filepaths, out_file, s_parsed):
     elif PETRglobals.NullActors:
         PETRwriter.write_nullactors(updated_events, 'nullactors.' + out_file)
     else:
-        PETRwriter.write_events(updated_events, 'evts.' + out_file)
+        #PETRwriter.write_events(updated_events, 'evts.' + out_file)
+        df = PETRwriter.get_events_as_df(updated_events)
+        df = df_orig.merge(df, how='left', on='GLOBALEVENTID', suffixes=('_G', '_P'))
+        df = df.drop(columns=['SQLDATE_P'])
+        df = df.rename(index=str, columns={'SQLDATE_G':'SQLDATE'})
+        col_to_keep = ['GLOBALEVENTID', 'SQLDATE', 'Actor1Code_G', 'Actor1Name_G', 'Actor2Code_G', 'Actor2Name_G', 'EventCode_G', 'Actor1Code_P', 'Actor1Name_P', 'Actor2Code_P', 'Actor2Name_P', 'EventCode_P', 'SOURCEURL']
+        df[col_to_keep].to_csv('outputfile.csv', index=False)
 
 
 def run_pipeline(data, out_file=None, config=None, write_output=True,
